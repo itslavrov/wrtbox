@@ -184,13 +184,14 @@ func validateStaging(ctx context.Context, exec ssh.Executor, stagingDir string) 
 	if _, errOut, err := exec.Run(ctx, "uci -c "+shellQuote(cfgDir)+" show >/dev/null"); err != nil {
 		return fmt.Errorf("uci parse: %w — %s", err, trimStderr(errOut))
 	}
-	// Xray test. Recent xray (>=1.8) wants `-test -config <file>`;
-	// older builds still accept `-test -c`. Try both, appending stderr
-	// from both attempts so the final error message surfaces the real
-	// problem (e.g. bad rule, invalid key) — not just "unknown flag".
+	// Xray test. xray ≥v24 uses subcommand form `xray test -c <file>`;
+	// older (≤v1.8) builds accept `-test -c <file>` or `-test -config <file>`.
+	// Try all three, appending stdout+stderr from each so the final error
+	// message surfaces the real problem (e.g. bad rule, invalid key).
 	xrayJSON := path.Join(stagingDir, "etc/xray/config.json")
 	xrayCmd := ": >/tmp/wrtbox-xray.err;" +
-		" { xray -test -config " + shellQuote(xrayJSON) + " >>/tmp/wrtbox-xray.err 2>&1" +
+		" { xray test -c " + shellQuote(xrayJSON) + " >>/tmp/wrtbox-xray.err 2>&1" +
+		" || xray -test -config " + shellQuote(xrayJSON) + " >>/tmp/wrtbox-xray.err 2>&1" +
 		" || xray -test -c " + shellQuote(xrayJSON) + " >>/tmp/wrtbox-xray.err 2>&1; }" +
 		" || { cat /tmp/wrtbox-xray.err >&2; exit 1; }"
 	if _, errOut, err := exec.Run(ctx, xrayCmd); err != nil {
@@ -315,8 +316,8 @@ func shellQuote(s string) string {
 
 func trimStderr(b []byte) string {
 	s := strings.TrimSpace(string(b))
-	if len(s) > 240 {
-		s = s[:240] + "...(truncated)"
+	if len(s) > 800 {
+		s = s[:800] + "...(truncated)"
 	}
 	return s
 }
