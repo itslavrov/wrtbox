@@ -64,30 +64,39 @@ jobs:
           echo "emu SSH never came up" >&2
           exit 1
 
-      - name: Prepare emu (sftp + xray stub)
+      - name: Prepare emu (sftp + real xray-core)
+        env:
+          XRAY_VERSION: v26.3.27
         run: |
           set -eo pipefail
           . /etc/wrtbox-openrc.sh >/dev/null 2>&1
           . /etc/wrtbox-emu.env
           IP=$(bash scripts/emu/emu.sh ip | tr -d '[:space:]')
-          ssh -i "$EMU_PRIVKEY_FILE" \
-              -o UserKnownHostsFile="$HOME/.ssh/known_hosts_wrtbox" \
-              -o StrictHostKeyChecking=accept-new \
-              -o LogLevel=ERROR \
-              "root@$IP" 'set -e
-                opkg update >/dev/null 2>&1
-                opkg install openssh-sftp-server >/dev/null
-                cat > /usr/bin/xray <<"EOF"
-          #!/bin/sh
-          # stub: validate passes, run sleeps so pidof xray succeeds
-          case "$1" in
-            -test|test) exit 0 ;;
-            run|-c|-config) exec sleep 86400 ;;
-            *) exec sleep 86400 ;;
-          esac
-          EOF
-                chmod +x /usr/bin/xray
-              '
+
+          # Fetch real xray binary on the runner (OpenWrt has no unzip by default).
+          WORK=$(mktemp -d)
+          trap 'rm -rf "$WORK"' EXIT
+          curl -fsSL -o "$WORK/xray.zip" \
+            "https://github.com/XTLS/Xray-core/releases/download/${XRAY_VERSION}/Xray-linux-64.zip"
+          unzip -q "$WORK/xray.zip" -d "$WORK" xray
+          chmod +x "$WORK/xray"
+
+          SSH_OPTS=(-i "$EMU_PRIVKEY_FILE"
+                    -o UserKnownHostsFile=$HOME/.ssh/known_hosts_wrtbox
+                    -o StrictHostKeyChecking=accept-new
+                    -o LogLevel=ERROR)
+
+          # openssh-sftp-server is required by wrtbox's SFTP upload path.
+          ssh "${SSH_OPTS[@]}" "root@$IP" 'set -e
+            opkg update >/dev/null 2>&1
+            opkg install openssh-sftp-server >/dev/null
+          '
+
+          # Ship real xray to /usr/bin/xray. No init.d/xray on purpose:
+          # post-check asserts pidof xray, which we want to FAIL so the
+          # rollback path is exercised in this integration test.
+          scp "${SSH_OPTS[@]}" "$WORK/xray" "root@$IP:/usr/bin/xray"
+          ssh "${SSH_OPTS[@]}" "root@$IP" 'chmod +x /usr/bin/xray && xray version | head -1'
 
       - name: Run integration tests
         run: |

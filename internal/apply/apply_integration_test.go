@@ -16,10 +16,12 @@ import (
 )
 
 // Integration test: runs the full apply pipeline against a real OpenWrt
-// emulator VM. Expected to fail at post-check (the example config points
-// at a non-reachable Reality peer) and auto-rollback; we assert the
-// rollback flag, the error shape, and that wrtbox left the router in a
-// clean state.
+// emulator VM with a real xray-core binary at /usr/bin/xray. Validate
+// stage runs real `xray -test -config` against the rendered config.
+// Post-check is expected to fail ("xray not running" — the emu ships no
+// /etc/init.d/xray, so nothing starts the daemon) and auto-rollback; we
+// assert the rollback flag, the error shape, and that wrtbox left the
+// router in a clean state.
 //
 // Requires env:
 //
@@ -96,7 +98,7 @@ func TestIntegrationApplyRollback(t *testing.T) {
 	})
 
 	if err == nil {
-		t.Fatalf("expected apply to fail at post-check against a stub Reality peer, got nil error\nlog:\n%s", log.String())
+		t.Fatalf("expected apply to fail at post-check (no xray daemon running on emu), got nil error\nlog:\n%s", log.String())
 	}
 	if !strings.Contains(err.Error(), "post-check") {
 		t.Fatalf("error should mention post-check, got: %v", err)
