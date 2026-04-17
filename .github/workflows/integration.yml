@@ -99,6 +99,7 @@ jobs:
           ssh "${SSH_OPTS[@]}" "root@$IP" 'chmod +x /usr/bin/xray && xray version | head -1'
 
       - name: Run integration tests
+        id: inttest
         run: |
           set -eo pipefail
           . /etc/wrtbox-openrc.sh >/dev/null 2>&1
@@ -108,6 +109,39 @@ jobs:
           export WRTBOX_EMU_KEY="$EMU_PRIVKEY_FILE"
           export WRTBOX_EMU_USER=root
           go test -tags=integration -count=1 -timeout=10m -v ./internal/apply/...
+
+      - name: Diagnostics on failure
+        if: failure() && steps.inttest.conclusion == 'failure'
+        run: |
+          set +e
+          . /etc/wrtbox-openrc.sh >/dev/null 2>&1
+          . /etc/wrtbox-emu.env
+          IP=$(bash scripts/emu/emu.sh ip | tr -d '[:space:]')
+          SSH_OPTS=(-i "$EMU_PRIVKEY_FILE"
+                    -o UserKnownHostsFile=$HOME/.ssh/known_hosts_wrtbox
+                    -o StrictHostKeyChecking=accept-new
+                    -o LogLevel=ERROR)
+          echo "::group::xray --help"
+          ssh "${SSH_OPTS[@]}" "root@$IP" 'xray --help 2>&1 | head -40'
+          echo "::endgroup::"
+          echo "::group::xray run --help"
+          ssh "${SSH_OPTS[@]}" "root@$IP" 'xray run --help 2>&1 | head -40'
+          echo "::endgroup::"
+          echo "::group::staging configs"
+          ssh "${SSH_OPTS[@]}" "root@$IP" 'ls -R /root/wrtbox-staging 2>&1 | head -40'
+          echo "::endgroup::"
+          echo "::group::xray test against the staged config"
+          ssh "${SSH_OPTS[@]}" "root@$IP" '
+            STAGED=$(ls -d /root/wrtbox-staging/*/etc/xray/config.json 2>/dev/null | head -1)
+            echo "staged: $STAGED"
+            echo "---try 1: xray run -test -c---"
+            xray run -test -c "$STAGED"; echo "exit=$?"
+            echo "---try 2: xray -test -config---"
+            xray -test -config "$STAGED"; echo "exit=$?"
+            echo "---try 3: xray -test -c---"
+            xray -test -c "$STAGED"; echo "exit=$?"
+          '
+          echo "::endgroup::"
 
       - name: Tear down emu VM
         if: always()
