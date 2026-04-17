@@ -124,22 +124,23 @@ jobs:
           echo "::group::xray --help"
           ssh "${SSH_OPTS[@]}" "root@$IP" 'xray --help 2>&1 | head -40'
           echo "::endgroup::"
-          echo "::group::xray run --help"
-          ssh "${SSH_OPTS[@]}" "root@$IP" 'xray run --help 2>&1 | head -40'
+          echo "::group::xray help run (full)"
+          ssh "${SSH_OPTS[@]}" "root@$IP" 'xray help run 2>&1 | head -80'
           echo "::endgroup::"
-          echo "::group::staging configs"
-          ssh "${SSH_OPTS[@]}" "root@$IP" 'ls -R /root/wrtbox-staging 2>&1 | head -40'
-          echo "::endgroup::"
-          echo "::group::xray test against the staged config"
+          echo "::group::render + xray test against a fresh rendered config"
           ssh "${SSH_OPTS[@]}" "root@$IP" '
-            STAGED=$(ls -d /root/wrtbox-staging/*/etc/xray/config.json 2>/dev/null | head -1)
+            mkdir -p /tmp/wrtbox-diag/etc/xray
+            cat > /tmp/wrtbox-diag/config.json <<'"'"'EOF'"'"'
+          {"log":{"loglevel":"warning"},"inbounds":[{"tag":"i","listen":"127.0.0.1","port":10808,"protocol":"socks","settings":{"auth":"noauth"}}],"outbounds":[{"tag":"o","protocol":"freedom"}]}
+          EOF
+            STAGED=/tmp/wrtbox-diag/config.json
             echo "staged: $STAGED"
             echo "---try 1: xray run -test -c---"
-            xray run -test -c "$STAGED"; echo "exit=$?"
+            xray run -test -c "$STAGED" 2>&1; echo "exit=$?"
             echo "---try 2: xray -test -config---"
-            xray -test -config "$STAGED"; echo "exit=$?"
+            xray -test -config "$STAGED" 2>&1; echo "exit=$?"
             echo "---try 3: xray -test -c---"
-            xray -test -c "$STAGED"; echo "exit=$?"
+            xray -test -c "$STAGED" 2>&1; echo "exit=$?"
           '
           echo "::endgroup::"
 
