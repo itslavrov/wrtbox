@@ -185,13 +185,13 @@ func validateStaging(ctx context.Context, exec ssh.Executor, stagingDir string) 
 		return fmt.Errorf("uci parse: %w — %s", err, trimStderr(errOut))
 	}
 	// Xray test. Recent xray (>=1.8) wants `-test -config <file>`;
-	// older builds still accept `-test -c`. Try both silently, capture
-	// stderr only from whichever variant actually returns non-zero last
-	// so the error message reflects the real problem (e.g. bad rule)
-	// not "unknown flag".
+	// older builds still accept `-test -c`. Try both, appending stderr
+	// from both attempts so the final error message surfaces the real
+	// problem (e.g. bad rule, invalid key) — not just "unknown flag".
 	xrayJSON := path.Join(stagingDir, "etc/xray/config.json")
-	xrayCmd := "xray -test -config " + shellQuote(xrayJSON) + " 2>/tmp/wrtbox-xray.err" +
-		" || xray -test -c " + shellQuote(xrayJSON) + " 2>/tmp/wrtbox-xray.err" +
+	xrayCmd := ": >/tmp/wrtbox-xray.err;" +
+		" { xray -test -config " + shellQuote(xrayJSON) + " 2>>/tmp/wrtbox-xray.err" +
+		" || xray -test -c " + shellQuote(xrayJSON) + " 2>>/tmp/wrtbox-xray.err; }" +
 		" || { cat /tmp/wrtbox-xray.err >&2; exit 1; }"
 	if _, errOut, err := exec.Run(ctx, xrayCmd); err != nil {
 		return fmt.Errorf("xray test: %w — %s", err, trimStderr(errOut))
