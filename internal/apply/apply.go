@@ -184,13 +184,14 @@ func validateStaging(ctx context.Context, exec ssh.Executor, stagingDir string) 
 	if _, errOut, err := exec.Run(ctx, "uci -c "+shellQuote(cfgDir)+" show >/dev/null"); err != nil {
 		return fmt.Errorf("uci parse: %w — %s", err, trimStderr(errOut))
 	}
-	// Xray test. xray ≥v24 uses subcommand form `xray test -c <file>`;
-	// older (≤v1.8) builds accept `-test -c <file>` or `-test -config <file>`.
+	// Xray test. xray v24+ puts -test under the `run` subcommand
+	// (`xray run -test -c <file>`); older (≤v1.8) builds accept the
+	// top-level form `-test -c <file>` or `-test -config <file>`.
 	// Try all three, appending stdout+stderr from each so the final error
 	// message surfaces the real problem (e.g. bad rule, invalid key).
 	xrayJSON := path.Join(stagingDir, "etc/xray/config.json")
 	xrayCmd := ": >/tmp/wrtbox-xray.err;" +
-		" { xray test -c " + shellQuote(xrayJSON) + " >>/tmp/wrtbox-xray.err 2>&1" +
+		" { xray run -test -c " + shellQuote(xrayJSON) + " >>/tmp/wrtbox-xray.err 2>&1" +
 		" || xray -test -config " + shellQuote(xrayJSON) + " >>/tmp/wrtbox-xray.err 2>&1" +
 		" || xray -test -c " + shellQuote(xrayJSON) + " >>/tmp/wrtbox-xray.err 2>&1; }" +
 		" || { cat /tmp/wrtbox-xray.err >&2; exit 1; }"
