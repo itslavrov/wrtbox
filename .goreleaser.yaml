@@ -28,17 +28,60 @@ builds:
 
 archives:
   - id: default
-    builds:
+    ids:
       - wrtbox
     name_template: >-
       {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
-    format: tar.gz
+    formats:
+      - tar.gz
     format_overrides:
       - goos: windows
-        format: zip
+        formats:
+          - zip
     files:
       - LICENSE
       - README.md
+
+nfpms:
+  - id: wrtbox
+    package_name: wrtbox
+    ids:
+      - wrtbox
+    vendor: itslavrov
+    homepage: https://github.com/itslavrov/wrtbox
+    maintainer: itslavrov <itslavrov.vkteam@gmail.com>
+    description: |-
+      Declarative OpenWrt: one YAML file, atomic apply, auto-rollback.
+    license: MIT
+    formats:
+      - deb
+      - rpm
+      - apk
+    bindir: /usr/bin
+    section: net
+    file_name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+
+brews:
+  - name: wrtbox
+    ids:
+      - default
+    repository:
+      owner: itslavrov
+      name: homebrew-tap
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Formula
+    homepage: https://github.com/itslavrov/wrtbox
+    description: Declarative OpenWrt — one YAML file, atomic apply, auto-rollback.
+    license: MIT
+    commit_author:
+      name: itslavrov
+      email: itslavrov.vkteam@gmail.com
+    install: |
+      bin.install "wrtbox"
+    test: |
+      system "#{bin}/wrtbox", "--version"
 
 checksum:
   name_template: checksums.txt
