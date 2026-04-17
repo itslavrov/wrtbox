@@ -1,0 +1,169 @@
+name: Integration (arm64)
+
+# Full apply + rollback integration test on a nested QEMU aarch64
+# OpenWrt VM. Mirrors .github/workflows/integration.yml (x86_64) but
+# runs the guest locally on the self-hosted emu runner rather than via
+# VK Cloud. Proves the pipeline works on a second arch end-to-end, not
+# just "SSH boots".
+#
+# Weekly + manual. Not on PRs: nested QEMU adds ~30-40s to boot and
+# the x86_64 integration job already covers the fast feedback loop.
+#
+# Runner expectations (see scripts/emu/runner-setup.md):
+#   /etc/wrtbox-emu.env  — exports EMU_PRIVKEY_FILE
+#   $EMU_PRIVKEY_FILE    — private key; public half is derived with ssh-keygen -y
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 4 * * 1'   # Mondays ~04:17 UTC
+
+concurrency:
+  group: integration-arm64
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  arm64-integration:
+    runs-on: [self-hosted, linux, x64, emu]
+    timeout-minutes: 30
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Ensure QEMU aarch64 + libguestfs tooling
+        run: |
+          set -eo pipefail
+          need_install=()
+          for pkg in qemu-system-arm qemu-efi-aarch64 libguestfs-tools; do
+            dpkg -s "$pkg" >/dev/null 2>&1 || need_install+=("$pkg")
+          done
+          if [ "${#need_install[@]}" -gt 0 ]; then
+            sudo apt-get update -y
+            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y "${need_install[@]}"
+          fi
+          qemu-system-aarch64 --version | head -1
+          virt-customize --version | head -1
+          # libguestfs needs a world-readable kernel for its appliance
+          # on some Debian builds. Cheap fixup, idempotent.
+          sudo chmod +r /boot/vmlinuz-* 2>/dev/null || true
+
+      - name: Derive emu pubkey
+        id: pubkey
+        run: |
+          set -eo pipefail
+          . /etc/wrtbox-emu.env
+          PUBKEY_PATH="$RUNNER_TEMP/wrtbox-emu.pub"
+          ssh-keygen -y -f "$EMU_PRIVKEY_FILE" > "$PUBKEY_PATH"
+          echo "path=$PUBKEY_PATH" >>"$GITHUB_OUTPUT"
+
+      - name: Boot arm64 emu (with baked pubkey)
+        env:
+          WRTBOX_ARM64_PUBKEY: ${{ steps.pubkey.outputs.path }}
+        run: |
+          set -eo pipefail
+          bash scripts/emu/arm64.sh up
+
+      - name: Wait for emu SSH
+        run: |
+          set -eo pipefail
+          . /etc/wrtbox-emu.env
+          # Ephemeral local emu — opkg installs can restart dropbear
+          # and rotate host keys mid-session, so TOFU is pointless here.
+          # Skip host-key checking entirely; integrity comes from pubkey
+          # auth against a baked-in authorized_keys.
+          for _ in $(seq 1 60); do
+            if ssh -i "$EMU_PRIVKEY_FILE" \
+                 -o Port=2222 \
+                 -o StrictHostKeyChecking=no \
+                 -o UserKnownHostsFile=/dev/null \
+                 -o ConnectTimeout=3 \
+                 -o LogLevel=ERROR \
+                 root@127.0.0.1 true 2>/dev/null; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "arm64 emu SSH never came up" >&2
+          bash scripts/emu/arm64.sh status >&2 || true
+          exit 1
+
+      - name: Prepare emu (sftp + real xray-core arm64)
+        env:
+          XRAY_VERSION: v26.3.27
+        run: |
+          set -eo pipefail
+          . /etc/wrtbox-emu.env
+
+          WORK=$(mktemp -d)
+          trap 'rm -rf "$WORK"' EXIT
+          curl -fsSL -o "$WORK/xray.zip" \
+            "https://github.com/XTLS/Xray-core/releases/download/${XRAY_VERSION}/Xray-linux-arm64-v8a.zip"
+          unzip -q "$WORK/xray.zip" -d "$WORK" xray geosite.dat geoip.dat
+          chmod +x "$WORK/xray"
+
+          # -o Port=2222 works for both ssh and scp. Using -p here would
+          # be interpreted by scp as "preserve mtimes" rather than port,
+          # sending scp to the runner's own sshd on :22.
+          SSH_OPTS=(-i "$EMU_PRIVKEY_FILE"
+                    -o Port=2222
+                    -o StrictHostKeyChecking=no
+                    -o UserKnownHostsFile=/dev/null
+                    -o LogLevel=ERROR)
+
+          # openssh-sftp-server is required by wrtbox's SFTP upload path.
+          # QEMU user-mode NAT gives the guest outbound internet.
+          ssh "${SSH_OPTS[@]}" root@127.0.0.1 'set -e
+            opkg update >/dev/null 2>&1
+            opkg install openssh-sftp-server >/dev/null
+          '
+
+          scp "${SSH_OPTS[@]}" "$WORK/xray" "$WORK/geosite.dat" "$WORK/geoip.dat" \
+              root@127.0.0.1:/usr/bin/
+          ssh "${SSH_OPTS[@]}" root@127.0.0.1 'chmod +x /usr/bin/xray && xray version | head -1'
+
+      - name: Run integration tests
+        id: inttest
+        run: |
+          set -eo pipefail
+          . /etc/wrtbox-emu.env
+          export WRTBOX_EMU_HOST=127.0.0.1
+          export WRTBOX_EMU_PORT=2222
+          export WRTBOX_EMU_KEY="$EMU_PRIVKEY_FILE"
+          export WRTBOX_EMU_USER=root
+          export WRTBOX_EMU_CONFIG="$PWD/examples/arm64-emu.yaml"
+          go test -tags=integration -count=1 -timeout=15m -v ./internal/apply/...
+
+      - name: Diagnostics on failure
+        if: failure() && steps.inttest.conclusion == 'failure'
+        run: |
+          set +e
+          . /etc/wrtbox-emu.env
+          # -o Port=2222 works for both ssh and scp. Using -p here would
+          # be interpreted by scp as "preserve mtimes" rather than port,
+          # sending scp to the runner's own sshd on :22.
+          SSH_OPTS=(-i "$EMU_PRIVKEY_FILE"
+                    -o Port=2222
+                    -o StrictHostKeyChecking=no
+                    -o UserKnownHostsFile=/dev/null
+                    -o LogLevel=ERROR)
+          echo "::group::guest uname + openwrt_release"
+          ssh "${SSH_OPTS[@]}" root@127.0.0.1 'uname -a; cat /etc/openwrt_release'
+          echo "::endgroup::"
+          echo "::group::xray version"
+          ssh "${SSH_OPTS[@]}" root@127.0.0.1 'xray version 2>&1 | head -20'
+          echo "::endgroup::"
+          echo "::group::arm64 emu status"
+          bash scripts/emu/arm64.sh status
+          echo "::endgroup::"
+
+      - name: Tear down arm64 emu
+        if: always()
+        run: |
+          bash scripts/emu/arm64.sh down || true

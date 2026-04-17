@@ -15,15 +15,28 @@ import (
 
 var update = flag.Bool("update", false, "regenerate golden testdata files")
 
-// TestRenderGolden is the Phase 1 Definition-of-Done check: render a
-// fixture resembling a real GL-MT6000 setup and assert the output tree
-// matches the frozen goldens byte-for-byte (after whitespace
-// normalisation).
+// TestRenderGolden walks every testdata/<fixture>/wrtbox.yaml + expected
+// tree and asserts the rendered output matches byte-for-byte (after
+// whitespace normalisation). Fixtures:
+//
+//   - gl-mt6000: first-class device adapter with full overrides off.
+//   - generic:   no first-class adapter, spec.device.overrides fills
+//     WAN / ports / radio paths.
 //
 // Run `go test ./internal/render -update` after an intentional render
-// change to refresh the goldens.
+// change to refresh every golden tree.
 func TestRenderGolden(t *testing.T) {
-	const fixtureDir = "testdata/gl-mt6000"
+	fixtures := []string{"gl-mt6000", "generic"}
+	for _, name := range fixtures {
+		name := name
+		t.Run(name, func(t *testing.T) {
+			runGolden(t, filepath.Join("testdata", name))
+		})
+	}
+}
+
+func runGolden(t *testing.T, fixtureDir string) {
+	t.Helper()
 	cfgPath := filepath.Join(fixtureDir, "wrtbox.yaml")
 	expectedRoot := filepath.Join(fixtureDir, "expected")
 
@@ -50,7 +63,9 @@ func TestRenderGolden(t *testing.T) {
 			if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
 				t.Fatalf("mkdir: %v", err)
 			}
-			if err := os.WriteFile(full, f.Data, 0o644); err != nil {
+			// Preserve the file's intended mode so scripts stay
+			// executable across regenerations.
+			if err := os.WriteFile(full, f.Data, os.FileMode(f.Mode)); err != nil {
 				t.Fatalf("write %s: %v", full, err)
 			}
 		}
@@ -58,7 +73,6 @@ func TestRenderGolden(t *testing.T) {
 		return
 	}
 
-	// Walk the expected tree; flag missing and surplus files.
 	seen := make(map[string]bool, len(files))
 	err = filepath.Walk(expectedRoot, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -99,8 +113,8 @@ func TestRenderGolden(t *testing.T) {
 }
 
 // normalize folds whitespace the same way on both sides: strips CRs,
-// collapses runs of horizontal whitespace, trims trailing space per
-// line, and ensures exactly one trailing newline.
+// trims trailing horizontal space per line, and ensures exactly one
+// trailing newline.
 func normalize(b []byte) string {
 	s := strings.ReplaceAll(string(b), "\r\n", "\n")
 	s = trailing.ReplaceAllString(s, "")

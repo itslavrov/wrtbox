@@ -6,6 +6,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -25,15 +26,25 @@ import (
 //
 // Requires env:
 //
-//	WRTBOX_EMU_HOST  — IP or hostname of the OpenWrt emu VM
-//	WRTBOX_EMU_KEY   — path to the private SSH key (default ~/.ssh/wrtbox-emu)
-//	WRTBOX_EMU_USER  — SSH user (default root)
+//	WRTBOX_EMU_HOST    — IP or hostname of the OpenWrt emu VM
+//	WRTBOX_EMU_PORT    — SSH port (default 22; set to 2222 for arm64 QEMU user-mode net)
+//	WRTBOX_EMU_KEY     — path to the private SSH key (default ~/.ssh/wrtbox-emu)
+//	WRTBOX_EMU_USER    — SSH user (default root)
+//	WRTBOX_EMU_CONFIG  — path to the wrtbox.yaml to apply (default ../../examples/x86_64-emu.yaml)
 //
 // Skipped cleanly when WRTBOX_EMU_HOST is not set.
 func TestIntegrationApplyRollback(t *testing.T) {
 	host := os.Getenv("WRTBOX_EMU_HOST")
 	if host == "" {
 		t.Skip("WRTBOX_EMU_HOST not set — skipping integration test")
+	}
+	port := 22
+	if p := os.Getenv("WRTBOX_EMU_PORT"); p != "" {
+		n, err := strconv.Atoi(p)
+		if err != nil || n <= 0 || n > 65535 {
+			t.Fatalf("WRTBOX_EMU_PORT invalid: %q", p)
+		}
+		port = n
 	}
 	keyPath := os.Getenv("WRTBOX_EMU_KEY")
 	if keyPath == "" {
@@ -59,7 +70,7 @@ func TestIntegrationApplyRollback(t *testing.T) {
 
 	client, err := ssh.Dial(ctx, ssh.DialOptions{
 		Host:             host,
-		Port:             22,
+		Port:             port,
 		User:             user,
 		KeyPath:          keyPath,
 		KnownHostsPath:   kh.Name(),
@@ -84,8 +95,12 @@ func TestIntegrationApplyRollback(t *testing.T) {
 		t.Fatalf("read baseline /etc/config/network: %v", err)
 	}
 
-	// Find the x86_64 emu example relative to this test file.
-	cfgPath := filepath.Join("..", "..", "examples", "x86_64-emu.yaml")
+	// Default to x86_64 emu example; WRTBOX_EMU_CONFIG lets the arm64
+	// integration workflow point to its own config without forking the test.
+	cfgPath := os.Getenv("WRTBOX_EMU_CONFIG")
+	if cfgPath == "" {
+		cfgPath = filepath.Join("..", "..", "examples", "x86_64-emu.yaml")
+	}
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
 		t.Fatalf("load example config %s: %v", cfgPath, err)

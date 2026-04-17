@@ -1,0 +1,60 @@
+apiVersion: wrtbox/v1
+kind: Router
+metadata:
+  name: xiaomi-ax3000t-example
+
+spec:
+  device:
+    model: xiaomi-ax3000t     # arbitrary label; falls back to generic profile
+    overrides:
+      wan_interface: eth1
+      lan_ports: [lan1, lan2, lan3]
+      radios:
+        - { name: radio0, band: 2g, htmode: HE20, path: "platform/soc/18000000.wifi" }
+        - { name: radio1, band: 5g, htmode: HE80, path: "platform/soc/18000000.wifi+1" }
+      required_packages:
+        - xray-core
+        - kmod-nft-tproxy
+        - xray-geodata
+      post_apply:
+        - /etc/init.d/dnsmasq restart
+
+  network:
+    lan:
+      ipaddr: 192.168.31.1/24
+    wan:
+      proto: dhcp
+      device: eth1
+      dns: [1.1.1.1, 8.8.8.8]
+
+  wireless:
+    country: RU
+    radios:
+      - { name: radio0, band: 2g }
+      - { name: radio1, band: 5g }
+    ssids:
+      - { radio: radio0, network: lan, ssid: example-home,  encryption: psk2, password: REPLACE_ME }
+      - { radio: radio1, network: lan, ssid: example-home,  encryption: psk2, password: REPLACE_ME }
+
+  transport:
+    xray:
+      reality:
+        server: vpn.example.com
+        port: 443
+        uuid: 00000000-0000-0000-0000-000000000000
+        server_name: www.microsoft.com
+        public_key: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+        short_id: deadbeefcafebabe
+
+  routing:
+    profile: split
+    block_quic: true
+    force_via_vpn:
+      - domain:youtube.com
+      - domain:telegram.org
+    force_direct:
+      - geosite:category-ru
+      - geoip:ru
+      - geoip:private
+    block:
+      - geosite:category-ads-all

@@ -1,0 +1,25 @@
+#!/bin/sh
+# wrtbox-arm64 boot diagnostics. Baked into /etc/rc.local so OpenWrt
+# runs it at the end of boot. Output is redirected to /dev/console so
+# it appears in qemu.log — otherwise userspace logs go to logd and the
+# serial console shows kernel messages only.
+{
+  echo "=== wrtbox-arm64 rc.local START ==="
+  sleep 5
+  echo "--- ip -br addr ---"
+  ip -br addr 2>&1
+  echo "--- ip route ---"
+  ip route 2>&1
+  echo "--- dropbear processes ---"
+  pgrep -fa dropbear 2>&1 || echo "(no dropbear running)"
+  echo "--- listening tcp ---"
+  (ss -tln 2>/dev/null || netstat -tln 2>/dev/null) || echo "(no ss/netstat)"
+  echo "--- /etc/config/network ---"
+  cat /etc/config/network 2>&1
+  echo "--- /etc/config/dropbear ---"
+  cat /etc/config/dropbear 2>&1
+  echo "--- logread tail 80 ---"
+  logread 2>&1 | tail -80
+  echo "=== wrtbox-arm64 rc.local END ==="
+} >/dev/console 2>&1
+exit 0

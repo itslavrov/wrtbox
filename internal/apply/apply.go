@@ -107,10 +107,20 @@ func Run(ctx context.Context, exec ssh.Executor, cfg *config.Config, opts Option
 		return res, nil
 	}
 
-	// 1. Sanity-check the remote.
+	// 1. Sanity-check the remote + ensure required packages (best-effort).
 	logf("[1/7] probing remote...")
 	if _, _, err := exec.Run(ctx, "test -d /etc/config && test -d /etc/xray || mkdir -p /etc/xray"); err != nil {
 		return res, fmt.Errorf("apply: probe: %w", err)
+	}
+	if cmd := requiredPackagesCmd(cfg); cmd != "" {
+		logf("  ensuring required packages: %s", cmd)
+		if out, errOut, err := exec.Run(ctx, cmd); err != nil {
+			// Best-effort: downstream validate/post-check will surface
+			// any concrete missing-capability error with a clearer
+			// message. Warn and continue.
+			logf("  warn: package install step returned error (continuing): %v — %s",
+				err, trimStderr(appendBytes(out, errOut)))
+		}
 	}
 
 	// 2. Upload to staging.
@@ -146,9 +156,16 @@ func Run(ctx context.Context, exec ssh.Executor, cfg *config.Config, opts Option
 		return res, fmt.Errorf("apply: swap: %w (rolled back)", err)
 	}
 
-	// 6. Reload services.
+	// 6. Reload services. Extra commands from spec.device.overrides.post_apply
+	// run after the standard reload set as part of the same atomic stage —
+	// any failure triggers rollback.
 	logf("[6/7] reloading services")
-	if _, errOut, err := exec.Run(ctx, strings.Join(reloadCmds, " && ")); err != nil {
+	allReload := append([]string(nil), reloadCmds...)
+	if extra := extraPostApply(cfg); len(extra) > 0 {
+		logf("  + %d user-supplied post_apply step(s)", len(extra))
+		allReload = append(allReload, extra...)
+	}
+	if _, errOut, err := exec.Run(ctx, strings.Join(allReload, " && ")); err != nil {
 		logf("reload failed: %v — stderr: %s", err, trimStderr(errOut))
 		_ = restore(ctx, exec, res.BackupDir)
 		_, _, _ = exec.Run(ctx, strings.Join(reloadCmds, " && "))
@@ -313,6 +330,44 @@ func firstIP(cidr string) string {
 
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// requiredPackagesCmd returns the shell pipeline that ensures
+// spec.device.overrides.required_packages are installed on the router,
+// or "" when nothing is declared. `opkg install` is idempotent, so
+// re-running is safe. Step is best-effort: downstream validate/post-check
+// surface concrete capability errors more clearly.
+func requiredPackagesCmd(cfg *config.Config) string {
+	if cfg.Spec.Device.Overrides == nil || len(cfg.Spec.Device.Overrides.RequiredPackages) == 0 {
+		return ""
+	}
+	pkgs := cfg.Spec.Device.Overrides.RequiredPackages
+	quoted := make([]string, 0, len(pkgs))
+	for _, p := range pkgs {
+		quoted = append(quoted, shellQuote(p))
+	}
+	return "opkg update >/dev/null 2>&1; opkg install " + strings.Join(quoted, " ")
+}
+
+// extraPostApply returns user-supplied post-apply commands from
+// spec.device.overrides.post_apply, or nil.
+func extraPostApply(cfg *config.Config) []string {
+	if cfg.Spec.Device.Overrides == nil {
+		return nil
+	}
+	return cfg.Spec.Device.Overrides.PostApply
+}
+
+// appendBytes returns a copy of a followed by b. Used when joining stdout
+// and stderr into a single blob for log output.
+func appendBytes(a, b []byte) []byte {
+	out := make([]byte, 0, len(a)+len(b)+1)
+	out = append(out, a...)
+	if len(a) > 0 && len(b) > 0 {
+		out = append(out, '\n')
+	}
+	out = append(out, b...)
+	return out
 }
 
 func trimStderr(b []byte) string {

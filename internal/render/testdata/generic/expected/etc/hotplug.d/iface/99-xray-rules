@@ -1,0 +1,28 @@
+#!/bin/sh
+# Restore xray ip rules + routing table after an interface comes up.
+
+[ "$ACTION" = "ifup" ] || exit 0
+
+case "$INTERFACE" in
+    wan|lan|pppoe-wan) ;;
+    *) exit 0 ;;
+esac
+
+logger -t xray-rules-hotplug "Interface $INTERFACE is up, restoring rules..."
+sleep 2
+
+if ! ip rule list | grep -q 'fwmark 0x1'; then
+    ip rule add fwmark 1 lookup 100 prio 100
+    logger -t xray-rules-hotplug "Added: ip rule fwmark 1 lookup 100"
+fi
+
+if ! ip route show table 100 | grep -q 'local default'; then
+    ip route add local 0.0.0.0/0 dev lo table 100
+    logger -t xray-rules-hotplug "Added: route local default dev lo table 100"
+fi
+
+if ! nft list table inet xray >/dev/null 2>&1; then
+    nft -f /etc/xray/nft.conf 2>&1 | logger -t xray-rules-hotplug
+fi
+
+logger -t xray-rules-hotplug "Done"

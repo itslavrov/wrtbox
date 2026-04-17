@@ -1,0 +1,41 @@
+apiVersion: wrtbox/v1
+kind: Router
+metadata:
+  name: arm64-emu-example
+
+spec:
+  device:
+    model: armv8-generic
+    overrides:
+      wan_interface: eth0
+      lan_ports: []
+
+  network:
+    lan:
+      ipaddr: 192.168.77.1/24
+    wan:
+      proto: dhcp
+      device: eth0
+      dns: [1.1.1.1, 8.8.8.8]
+
+  vpnlan:
+    ipaddr: 192.168.10.1/24
+
+  transport:
+    xray:
+      reality:
+        server: vpn.example.com
+        port: 443
+        uuid: 00000000-0000-0000-0000-000000000000
+        server_name: www.microsoft.com
+        public_key: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+        short_id: deadbeefcafebabe
+
+  routing:
+    profile: split
+    block_quic: true
+    force_via_vpn:
+      - domain:youtube.com
+    force_direct:
+      - geoip:private
+    block: []

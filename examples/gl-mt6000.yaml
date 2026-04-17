@@ -38,7 +38,7 @@ spec:
         port: 443
         uuid: 00000000-0000-0000-0000-000000000000
         server_name: www.microsoft.com
-        public_key: REPLACE_ME_WITH_REALITY_PBK
+        public_key: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
         short_id: deadbeefcafebabe
 
   routing:

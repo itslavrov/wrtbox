@@ -1,0 +1,27 @@
+#!/bin/sh /etc/rc.common
+
+START=90
+STOP=10
+
+start() {
+    nft list table inet xray >/dev/null 2>&1 || nft add table inet xray
+    nft -f /etc/xray/nft.conf 2>/dev/null
+
+    ip rule list | grep -q 'fwmark 0x1' || ip rule add fwmark 1 lookup 100 prio 100
+    ip route show table 100 | grep -q 'local default' || ip route add local 0.0.0.0/0 dev lo table 100
+
+    echo "xray-rules started"
+}
+
+stop() {
+    nft delete table inet xray 2>/dev/null
+    ip rule del fwmark 1 lookup 100 2>/dev/null
+    ip route flush table 100 2>/dev/null
+    echo "xray-rules stopped"
+}
+
+restart() {
+    stop
+    sleep 1
+    start
+}

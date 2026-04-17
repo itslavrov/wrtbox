@@ -34,9 +34,30 @@ type Spec struct {
 }
 
 // Device selects the target hardware/software adapter.
+//
+// Model chooses a built-in profile (gl-mt6000, x86_64, generic) — anything
+// else falls back to the generic profile. Overrides carry device-specific
+// quirks users supply without us shipping per-device Go code.
 type Device struct {
-	Model  string `yaml:"model"          validate:"required,oneof=gl-mt6000 x86_64"`
-	Target string `yaml:"target,omitempty"` // e.g. 192.168.1.1 — used by apply/diff, not render
+	Model     string           `yaml:"model"          validate:"required,hostname_rfc1123|eq=generic|eq=x86_64"`
+	Target    string           `yaml:"target,omitempty"` // e.g. 192.168.1.1 — used by apply/diff, not render
+	Overrides *DeviceOverrides `yaml:"overrides,omitempty"`
+}
+
+// DeviceOverrides lets users describe an unsupported device entirely in
+// YAML on top of the generic profile. Fields here feed adapter defaults
+// and optional apply-time hooks:
+//
+//   - WANInterface/LANPorts/Radios fill in rendering defaults.
+//   - RequiredPackages are installed via opkg on apply (best-effort).
+//   - PostApply commands run after the standard post-apply reload; they
+//     must be idempotent and fast (each is bounded to a few seconds).
+type DeviceOverrides struct {
+	WANInterface     string   `yaml:"wan_interface,omitempty"`
+	LANPorts         []string `yaml:"lan_ports,omitempty"         validate:"omitempty,dive,required"`
+	Radios           []Radio  `yaml:"radios,omitempty"            validate:"omitempty,dive"`
+	RequiredPackages []string `yaml:"required_packages,omitempty" validate:"omitempty,dive,required"`
+	PostApply        []string `yaml:"post_apply,omitempty"        validate:"omitempty,dive,required"`
 }
 
 // Network describes LAN/WAN/DHCP — the baseline OpenWrt network layout.

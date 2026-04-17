@@ -77,7 +77,7 @@ brews:
     license: MIT
     commit_author:
       name: itslavrov
-      email: itslavrov.vkteam@gmail.com
+      email: itslavrov@me.com
     install: |
       bin.install "wrtbox"
     test: |
