@@ -1,0 +1,101 @@
+apiVersion: wrtbox/v1
+kind: Router
+metadata:
+  name: home-router
+  description: "Home GL-MT6000 with split-routing via self-hosted VLESS+Reality"
+
+spec:
+  device:
+    model: gl-mt6000
+
+  network:
+    lan:
+      ipaddr: 192.168.1.1/24
+      ports: [lan1, lan2, lan3, lan4, lan5]
+    wan:
+      proto: pppoe
+      device: eth1
+      username: REPLACE_ME
+      password: REPLACE_ME
+      dns: [1.1.1.1, 1.0.0.1, 8.8.8.8, 9.9.9.9]
+
+  wireless:
+    country: RU
+    radios:
+      - { name: radio0, band: 2g, channel: auto, htmode: HE20 }
+      - { name: radio1, band: 5g, channel: auto, htmode: HE80 }
+    ssids:
+      - { radio: radio0, network: lan,    ssid: home,      encryption: psk2, password: REPLACE_ME }
+      - { radio: radio1, network: lan,    ssid: home,      encryption: psk2, password: REPLACE_ME }
+      - { radio: radio1, network: vpnlan, ssid: home-proxy, encryption: psk2, password: REPLACE_ME }
+
+  vpnlan:
+    ipaddr: 192.168.10.1/24
+
+  transport:
+    xray:
+      socks_port: 10808
+      log_level: warning
+      mark: 255
+      tproxy:
+        listen: 0.0.0.0
+        port: 12345
+      reality:
+        server: vpn.example.com
+        port: 443
+        uuid: 00000000-0000-0000-0000-000000000000
+        server_name: www.microsoft.com
+        public_key: REPLACE_ME_WITH_REALITY_PBK
+        short_id: 0000000000000000
+        fingerprint: chrome
+
+  routing:
+    profile: split
+    domain_strategy: IPIfNonMatch
+    block_quic: true
+
+    # Explicit forces — each entry becomes a first-match xray rule.
+    # Syntax follows xray's own prefixes: domain:, geosite:, geoip:, or bare CIDR.
+    force_via_vpn:
+      - ip:74.125.0.0/16     # Google
+      - ip:142.250.0.0/15
+      - ip:172.217.0.0/16
+      - ip:173.194.0.0/16
+      - ip:91.108.0.0/16     # Telegram
+      - ip:149.154.160.0/20
+      - ip:185.76.151.0/24
+      - domain:youtube.com
+      - domain:youtu.be
+      - domain:ytimg.com
+      - domain:googlevideo.com
+      - domain:telegram.org
+      - domain:t.me
+      - domain:twitter.com
+      - domain:x.com
+      - domain:instagram.com
+      - domain:facebook.com
+      - domain:openai.com
+      - domain:chatgpt.com
+      - domain:anthropic.com
+      - domain:claude.ai
+      - domain:github.com
+
+    force_direct:
+      - geosite:category-ru
+      - geoip:ru
+      - geoip:private
+
+    block:
+      - geosite:category-ads-all
+      - domain:doubleclick.net
+      - domain:googleadservices.com
+      - domain:googlesyndication.com
+
+    # Named lists — `embed:` resolves to compiled-in snapshots;
+    # switch to `file:/etc/xray/lists/antifilter.txt` to use the
+    # on-router list maintained by update-antifilter.sh.
+    lists:
+      - name: antifilter
+        source: embed:antifilter-ipsum
+        outbound_tag: vless-out
+        kind: cidr

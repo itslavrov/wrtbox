@@ -1,0 +1,109 @@
+name: Integration
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'internal/**'
+      - 'cmd/**'
+      - 'examples/**'
+      - 'scripts/emu/**'
+      - '.github/workflows/integration.yml'
+      - 'go.mod'
+      - 'go.sum'
+  workflow_dispatch:
+
+# Runner setup is machine-local (see scripts/emu/runner-setup.md):
+#   /etc/wrtbox-openrc.sh  — OpenStack credentials for the emu cloud
+#   /etc/wrtbox-emu.env    — EMU_* tunables (network id, key path, etc.)
+#   ~/.ssh/wrtbox-emu      — SSH key accepted by the baked OpenWrt image
+
+concurrency:
+  group: integration
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    runs-on: [self-hosted, linux, x64, emu]
+    timeout-minutes: 25
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Boot emu VM
+        run: |
+          set -eo pipefail
+          . /etc/wrtbox-openrc.sh >/dev/null 2>&1
+          . /etc/wrtbox-emu.env
+          bash scripts/emu/emu.sh up >/dev/null
+
+      - name: Wait for emu SSH
+        run: |
+          set -eo pipefail
+          . /etc/wrtbox-openrc.sh >/dev/null 2>&1
+          . /etc/wrtbox-emu.env
+          IP=$(bash scripts/emu/emu.sh ip | tr -d '[:space:]')
+          for _ in $(seq 1 36); do
+            if ssh -i "$EMU_PRIVKEY_FILE" \
+                 -o StrictHostKeyChecking=accept-new \
+                 -o UserKnownHostsFile="$HOME/.ssh/known_hosts_wrtbox" \
+                 -o ConnectTimeout=3 \
+                 -o LogLevel=ERROR \
+                 "root@$IP" true 2>/dev/null; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "emu SSH never came up" >&2
+          exit 1
+
+      - name: Prepare emu (sftp + xray stub)
+        run: |
+          set -eo pipefail
+          . /etc/wrtbox-openrc.sh >/dev/null 2>&1
+          . /etc/wrtbox-emu.env
+          IP=$(bash scripts/emu/emu.sh ip | tr -d '[:space:]')
+          ssh -i "$EMU_PRIVKEY_FILE" \
+              -o UserKnownHostsFile="$HOME/.ssh/known_hosts_wrtbox" \
+              -o StrictHostKeyChecking=accept-new \
+              -o LogLevel=ERROR \
+              "root@$IP" 'set -e
+                opkg update >/dev/null 2>&1
+                opkg install openssh-sftp-server >/dev/null
+                cat > /usr/bin/xray <<"EOF"
+          #!/bin/sh
+          # stub: validate passes, run sleeps so pidof xray succeeds
+          case "$1" in
+            -test|test) exit 0 ;;
+            run|-c|-config) exec sleep 86400 ;;
+            *) exec sleep 86400 ;;
+          esac
+          EOF
+                chmod +x /usr/bin/xray
+              '
+
+      - name: Run integration tests
+        run: |
+          set -eo pipefail
+          . /etc/wrtbox-openrc.sh >/dev/null 2>&1
+          . /etc/wrtbox-emu.env
+          WRTBOX_EMU_HOST=$(bash scripts/emu/emu.sh ip | tr -d '[:space:]')
+          export WRTBOX_EMU_HOST
+          export WRTBOX_EMU_KEY="$EMU_PRIVKEY_FILE"
+          export WRTBOX_EMU_USER=root
+          go test -tags=integration -count=1 -timeout=10m -v ./internal/apply/...
+
+      - name: Tear down emu VM
+        if: always()
+        run: |
+          set +e
+          . /etc/wrtbox-openrc.sh >/dev/null 2>&1
+          . /etc/wrtbox-emu.env
+          bash scripts/emu/emu.sh down >/dev/null 2>&1 || true

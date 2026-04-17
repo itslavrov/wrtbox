@@ -1,0 +1,62 @@
+apiVersion: wrtbox/v1
+kind: Router
+metadata:
+  name: gl-mt6000-example
+
+spec:
+  device:
+    model: gl-mt6000
+
+  network:
+    lan:
+      ipaddr: 192.168.1.1/24
+      ports: [lan1, lan2, lan3, lan4, lan5]
+    wan:
+      proto: pppoe
+      device: eth1
+      username: REPLACE_ME
+      password: REPLACE_ME
+      dns: [1.1.1.1, 1.0.0.1, 8.8.8.8, 9.9.9.9]
+
+  wireless:
+    country: RU
+    radios:
+      - { name: radio0, band: 2g, htmode: HE20 }
+      - { name: radio1, band: 5g, htmode: HE80 }
+    ssids:
+      - { radio: radio0, network: lan,    ssid: example-home,  encryption: psk2, password: REPLACE_ME }
+      - { radio: radio1, network: lan,    ssid: example-home,  encryption: psk2, password: REPLACE_ME }
+      - { radio: radio1, network: vpnlan, ssid: example-proxy, encryption: psk2, password: REPLACE_ME }
+
+  vpnlan:
+    ipaddr: 192.168.10.1/24
+
+  transport:
+    xray:
+      reality:
+        server: vpn.example.com
+        port: 443
+        uuid: 00000000-0000-0000-0000-000000000000
+        server_name: www.microsoft.com
+        public_key: REPLACE_ME_WITH_REALITY_PBK
+        short_id: deadbeefcafebabe
+
+  routing:
+    profile: split
+    block_quic: true
+    force_via_vpn:
+      - ip:74.125.0.0/16
+      - ip:91.108.0.0/16
+      - domain:youtube.com
+      - domain:telegram.org
+    force_direct:
+      - geosite:category-ru
+      - geoip:ru
+      - geoip:private
+    block:
+      - geosite:category-ads-all
+    lists:
+      - name: antifilter
+        source: embed:antifilter-ipsum
+        outbound_tag: vless-out
+        kind: cidr

@@ -1,0 +1,76 @@
+version: 2
+
+project_name: wrtbox
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: wrtbox
+    main: ./cmd/wrtbox
+    binary: wrtbox
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/itslavrov/wrtbox/internal/version.Version={{ .Version }}
+      - -X github.com/itslavrov/wrtbox/internal/version.Commit={{ .ShortCommit }}
+      - -X github.com/itslavrov/wrtbox/internal/version.BuildDate={{ .Date }}
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - id: default
+    builds:
+      - wrtbox
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    format: tar.gz
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ .Tag }}-snapshot-{{ .ShortCommit }}"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "merge conflict"
+  groups:
+    - title: Features
+      regexp: "^.*feat[(\\w)]*:+.*$"
+      order: 0
+    - title: Bug fixes
+      regexp: "^.*fix[(\\w)]*:+.*$"
+      order: 1
+    - title: Others
+      order: 999
+
+release:
+  github:
+    owner: itslavrov
+    name: wrtbox
+  draft: false
+  prerelease: auto
+  header: |
+    ## wrtbox {{ .Tag }}

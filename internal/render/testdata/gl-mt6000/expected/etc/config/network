@@ -1,0 +1,47 @@
+package network
+
+config interface 'loopback'
+	option device 'lo'
+	option proto 'static'
+	list ipaddr '127.0.0.1/8'
+
+config globals 'globals'
+	option packet_steering '1'
+
+config device
+	option name 'br-lan'
+	option type 'bridge'
+	list ports 'lan1'
+	list ports 'lan2'
+	list ports 'lan3'
+	list ports 'lan4'
+	list ports 'lan5'
+
+config interface 'lan'
+	option device 'br-lan'
+	option proto 'static'
+	list ipaddr '192.168.1.1/24'
+	option ipv6 '0'
+
+config interface 'wan'
+	option device 'eth1'
+	option proto 'pppoe'
+	option username 'testuser'
+	option password 'testpass'
+	option norelease '1'
+	option peerdns '0'
+	list dns '1.1.1.1'
+	list dns '1.0.0.1'
+	list dns '8.8.8.8'
+	list dns '9.9.9.9'
+	option ipv6 '0'
+
+config device 'vpnlan_dev'
+	option name 'br-vpnlan'
+	option type 'bridge'
+
+config interface 'vpnlan'
+	option proto 'static'
+	option ipaddr '192.168.10.1'
+	option netmask '255.255.255.0'
+	option device 'br-vpnlan'
