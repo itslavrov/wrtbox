@@ -190,8 +190,8 @@ func validateStaging(ctx context.Context, exec ssh.Executor, stagingDir string) 
 	// problem (e.g. bad rule, invalid key) — not just "unknown flag".
 	xrayJSON := path.Join(stagingDir, "etc/xray/config.json")
 	xrayCmd := ": >/tmp/wrtbox-xray.err;" +
-		" { xray -test -config " + shellQuote(xrayJSON) + " 2>>/tmp/wrtbox-xray.err" +
-		" || xray -test -c " + shellQuote(xrayJSON) + " 2>>/tmp/wrtbox-xray.err; }" +
+		" { xray -test -config " + shellQuote(xrayJSON) + " >>/tmp/wrtbox-xray.err 2>&1" +
+		" || xray -test -c " + shellQuote(xrayJSON) + " >>/tmp/wrtbox-xray.err 2>&1; }" +
 		" || { cat /tmp/wrtbox-xray.err >&2; exit 1; }"
 	if _, errOut, err := exec.Run(ctx, xrayCmd); err != nil {
 		return fmt.Errorf("xray test: %w — %s", err, trimStderr(errOut))
