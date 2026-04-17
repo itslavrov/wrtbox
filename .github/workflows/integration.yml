@@ -78,7 +78,7 @@ jobs:
           trap 'rm -rf "$WORK"' EXIT
           curl -fsSL -o "$WORK/xray.zip" \
             "https://github.com/XTLS/Xray-core/releases/download/${XRAY_VERSION}/Xray-linux-64.zip"
-          unzip -q "$WORK/xray.zip" -d "$WORK" xray
+          unzip -q "$WORK/xray.zip" -d "$WORK" xray geosite.dat geoip.dat
           chmod +x "$WORK/xray"
 
           SSH_OPTS=(-i "$EMU_PRIVKEY_FILE"
@@ -92,10 +92,13 @@ jobs:
             opkg install openssh-sftp-server >/dev/null
           '
 
-          # Ship real xray to /usr/bin/xray. No init.d/xray on purpose:
-          # post-check asserts pidof xray, which we want to FAIL so the
-          # rollback path is exercised in this integration test.
-          scp "${SSH_OPTS[@]}" "$WORK/xray" "root@$IP:/usr/bin/xray"
+          # Ship real xray to /usr/bin/xray plus geosite.dat/geoip.dat,
+          # which xray loads from CWD or the binary's directory at -test
+          # time to resolve geosite:/geoip: rules. No init.d/xray on
+          # purpose: post-check asserts pidof xray, which we want to
+          # FAIL so the rollback path is exercised in this test.
+          scp "${SSH_OPTS[@]}" "$WORK/xray" "$WORK/geosite.dat" "$WORK/geoip.dat" \
+              "root@$IP:/usr/bin/"
           ssh "${SSH_OPTS[@]}" "root@$IP" 'chmod +x /usr/bin/xray && xray version | head -1'
 
       - name: Run integration tests
