@@ -1,4 +1,4 @@
-name: ARM64 E2E
+name: Integration arm64
 
 # Full apply + rollback integration test on a nested QEMU aarch64
 # OpenWrt VM. Mirrors .github/workflows/integration.yml (x86_64) but
