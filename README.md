@@ -2,8 +2,9 @@
 
 [![CI](https://github.com/itslavrov/wrtbox/actions/workflows/ci.yml/badge.svg)](https://github.com/itslavrov/wrtbox/actions/workflows/ci.yml)
 [![ARM64 E2E](https://github.com/itslavrov/wrtbox/actions/workflows/integration-arm64.yml/badge.svg)](https://github.com/itslavrov/wrtbox/actions/workflows/integration-arm64.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/itslavrov/wrtbox)](https://goreportcard.com/report/github.com/itslavrov/wrtbox)
+[![GitHub Release](https://img.shields.io/github/v/release/itslavrov/wrtbox)](https://github.com/itslavrov/wrtbox/releases)
 [![License: MIT](https://img.shields.io/github/license/itslavrov/wrtbox)](LICENSE)
-[![Go 1.23](https://img.shields.io/badge/Go-1.23-00ADD8?logo=go&logoColor=white)](https://go.dev/)
 [![OpenWrt 23.05+](https://img.shields.io/badge/OpenWrt-23.05+-00B5E2?logo=openwrt&logoColor=white)](https://openwrt.org/)
 [![Telegram](https://img.shields.io/badge/Telegram-@itslavrov-26A5E4?logo=telegram&logoColor=white)](https://t.me/itslavrov)
 
