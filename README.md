@@ -1,7 +1,7 @@
 # Declarative OpenWrt
 
 [![CI](https://github.com/itslavrov/wrtbox/actions/workflows/ci.yml/badge.svg)](https://github.com/itslavrov/wrtbox/actions/workflows/ci.yml)
-[![Integration (arm64)](https://github.com/itslavrov/wrtbox/actions/workflows/integration-arm64.yml/badge.svg)](https://github.com/itslavrov/wrtbox/actions/workflows/integration-arm64.yml)
+[![ARM64 E2E](https://github.com/itslavrov/wrtbox/actions/workflows/integration-arm64.yml/badge.svg)](https://github.com/itslavrov/wrtbox/actions/workflows/integration-arm64.yml)
 [![License: MIT](https://img.shields.io/github/license/itslavrov/wrtbox)](LICENSE)
 [![Go 1.23](https://img.shields.io/badge/Go-1.23-00ADD8?logo=go&logoColor=white)](https://go.dev/)
 [![OpenWrt 23.05+](https://img.shields.io/badge/OpenWrt-23.05+-00B5E2?logo=openwrt&logoColor=white)](https://openwrt.org/)
